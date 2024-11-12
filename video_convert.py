@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import os
 import subprocess
 import json
@@ -7,6 +9,11 @@ from moviepy.editor import VideoFileClip, AudioFileClip
 import wave
 import csv
 from TTS.api import TTS
+import google_auth_oauthlib.flow
+import googleapiclient.discovery
+import googleapiclient.errors
+from docx import Document
+
 
 def transcribe_and_subtitle(input_dir, output_dir):
     # Load the Whisper model
@@ -57,7 +64,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,48,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,2,0,2,100,100,200,1
+Style: Default,Arial,48,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,2,0,5,100,100,200,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -176,40 +183,114 @@ def trim_video_add_audio(video_path, audio_path, output_path):
                     output = os.path.join(output_path, f'trimmed_w_audio_{i}_{j}.mp4')
                     video_with_new_audio.write_videofile(output, codec="libx264", audio_codec="aac")
 
-def create_story_audio(fun_facts, audio_files):
+def create_story_audio(script_dir, audio_files):
+    for filename in os.listdir(script_dir):
+        if filename.endswith('.csv'):
+            file_path = os.path.join(script_dir, filename)
+            with open(file_path, mode='r', encoding='utf-8') as file:
+                reader = csv.reader(file)
+                # Skip header
+                next(reader, None)
+                for i, row in enumerate(reader):
+                    fun_fact = str(row[0])
+                    # Load the multi-speaker VITS models
+                    tts = TTS(model_name="tts_models/en/vctk/vits")
+                    speaker = "p230"
+                    tts.tts_to_file(text=fun_fact, speaker=speaker, speed=1, pitch=1.2, file_path=os.path.join(audio_files, f'story_audio_{i}.wav'))
 
-    with open(fun_facts, mode='r', encoding='utf-8') as file:
-        reader = csv.reader(file)
-        # Skip header
-        next(reader, None)
-        for i, row in enumerate(reader):
-            fun_fact = str(row[0])
-            # Load the multi-speaker VITS models
-            tts = TTS(model_name="tts_models/en/vctk/vits")
-            speaker = "p230"
-            tts.tts_to_file(text=fun_fact, speaker=speaker, speed=1, pitch=1.2, file_path=os.path.join(audio_files, f'story_audio_{i}.wav'))
+def upload_to_youtube(video_dir, title_dir):
+    # Define constants
+    SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+    API_SERVICE_NAME = "youtube"
+    API_VERSION = "v3"
+    CLIENT_SECRET = "/Users/howardqian/Desktop/Youtube_Shorts/client_secret_573416408525-av3ev1ga2h8hs4rbr25qf6vmj648a9r1.apps.googleusercontent.com.json"
+
+    def authenticate(client_secret):
+        # Load credentials from the downloaded JSON file
+        os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"  # For development purposes, disable HTTPS check
+        flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
+            client_secret, SCOPES)
+        credentials = flow.run_console()  # Follow console instructions to authenticate
+        return credentials
+
+    def upload_video(credentials, file_path, title, category_id="22", privacy_status="public"):
+        
+        youtube = googleapiclient.discovery.build(
+            API_SERVICE_NAME, API_VERSION, credentials=credentials)
+
+        request_body = {
+            "snippet": {
+                "title": title,
+                "categoryId": category_id
+            },
+            "status": {
+                "privacyStatus": privacy_status
+            }
+        }
+
+        # Upload video file
+        request = youtube.videos().insert(
+            part="snippet,status",
+            body=request_body,
+            media_body=googleapiclient.http.MediaFileUpload(file_path, chunksize=-1, resumable=True)
+        )
+
+        response = None
+        while response is None:
+            status, response = request.next_chunk()
+            if status:
+                print(f"Upload progress: {int(status.progress() * 100)}%")
+
+        print("Video uploaded successfully!")
+        return response
+    
+    def read_docx_to_string(file_path):
+        # Open the document
+        doc = Document(file_path)
+        
+        # Read each paragraph and join them into a single string
+        doc_text = "\n".join([para.text for para in doc.paragraphs])
+        
+        return doc_text
+    
+    # Set parameters for the video
+    for filename in os.listdir(title_dir):
+        if filename.endswith('.docx'):
+            file_path = os.path.join(title_dir, filename)
+            title = read_docx_to_string(file_path=file_path)
+    category_id = "22"  # 22 is for 'People & Blogs'
+    privacy_status = "public"  # Options: "public", "private", or "unlisted"'
+    credentials = authenticate(CLIENT_SECRET)
+    for filename in os.listdir(video_dir):
+        if filename.endswith('.mp4'):
+            file_path = os.path.join(video_dir, filename)
+            upload_video(credentials=credentials, file_path=file_path, title=title, category_id=category_id, privacy_status=privacy_status)
+
 
     
 
 if __name__ == "__main__":
-    fun_facts = "/Users/howardqian/Desktop/Youtube_Shorts/fun_facts.csv"
+    script = "/Users/howardqian/Desktop/Youtube_Shorts/script"
     raw_videos = '/Users/howardqian/Desktop/Youtube_Shorts/raw_videos'
     audio_files = '/Users/howardqian/Desktop/Youtube_Shorts/audio_files'
     trimmed_w_audio_videos = '/Users/howardqian/Desktop/Youtube_Shorts/trimmed_w_audio'
     cropped_videos = '/Users/howardqian/Desktop/Youtube_Shorts/cropped_videos'
     transcribed_videos = '/Users/howardqian/Desktop/Youtube_Shorts/transcribed_videos'
 
-    print("CREATING AUDIO")
-    create_story_audio(fun_facts, audio_files)
+    # print("CREATING AUDIO")
+    # create_story_audio(script, audio_files)
 
-    print("TRIMMING RAW VIDEO AND ADDING AUDIO")
-    trim_video_add_audio(raw_videos, audio_files, trimmed_w_audio_videos)
+    # print("TRIMMING RAW VIDEO AND ADDING AUDIO")
+    # trim_video_add_audio(raw_videos, audio_files, trimmed_w_audio_videos)
 
-    print("CROPPING VIDEO")
-    crop_videos(trimmed_w_audio_videos, cropped_videos)
+    # print("CROPPING VIDEO")
+    # crop_videos(trimmed_w_audio_videos, cropped_videos)
 
-    print("TRANSCRIBING AND ADDING SUBTITLES")
-    transcribe_and_subtitle(cropped_videos, transcribed_videos)
+    # print("TRANSCRIBING AND ADDING SUBTITLES")
+    # transcribe_and_subtitle(cropped_videos, transcribed_videos)
+
+    print("UPLOADING TO YOUTUBE")
+    upload_to_youtube(transcribed_videos, script)
 
 
 
