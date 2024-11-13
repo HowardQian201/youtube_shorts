@@ -194,7 +194,7 @@ def create_story_audio(facts, audio_files):
     for i, fact in enumerate(facts):
         # Load the multi-speaker VITS models
         tts = TTS(model_name="tts_models/en/vctk/vits")
-        speaker = "p230"
+        speaker = "p251" # p267 good for scary stories
         tts.tts_to_file(text=fact, speaker=speaker, speed=1, pitch=1.2, file_path=os.path.join(audio_files, f'{i}_story_audio.wav'))
 
 def upload_to_youtube(video_dir, titles, descriptions):
@@ -346,23 +346,23 @@ if __name__ == "__main__":
     cropped_videos = '/Users/howardqian/Desktop/Youtube_Shorts/cropped_videos'
     transcribed_videos = '/Users/howardqian/Desktop/Youtube_Shorts/transcribed_videos'
 
-    # print("CREATING SCRIPT")
-    # facts, titles, descriptions = create_script()
+    print("CREATING SCRIPT")
+    facts, titles, descriptions = create_script()
 
-    # print("CREATING AUDIO")
-    # create_story_audio(facts, audio_files)
+    print("CREATING AUDIO")
+    create_story_audio(facts, audio_files)
 
-    # print("TRIMMING RAW VIDEO AND ADDING AUDIO")
-    # trim_video_add_audio(raw_videos, audio_files, trimmed_w_audio_videos)
+    print("TRIMMING RAW VIDEO AND ADDING AUDIO")
+    trim_video_add_audio(raw_videos, audio_files, trimmed_w_audio_videos)
 
-    # print("CROPPING VIDEO")
-    # crop_videos(trimmed_w_audio_videos, cropped_videos)
+    print("CROPPING VIDEO")
+    crop_videos(trimmed_w_audio_videos, cropped_videos)
 
     print("TRANSCRIBING AND ADDING SUBTITLES")
     transcribe_and_subtitle(cropped_videos, transcribed_videos)
 
-    # print("UPLOADING TO YOUTUBE")
-    # upload_to_youtube(transcribed_videos, titles, descriptions)
+    print("UPLOADING TO YOUTUBE")
+    upload_to_youtube(transcribed_videos, titles, descriptions)
 
 
 
