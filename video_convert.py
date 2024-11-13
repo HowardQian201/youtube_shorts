@@ -13,6 +13,10 @@ import google_auth_oauthlib.flow
 import googleapiclient.discovery
 import googleapiclient.errors
 from docx import Document
+from openai_api import OPENAI_API_KEY
+from openai import OpenAI
+
+
 
 
 def transcribe_and_subtitle(input_dir, output_dir):
@@ -27,7 +31,7 @@ def transcribe_and_subtitle(input_dir, output_dir):
 
     for video_file in tqdm(video_files, desc="Processing videos"):
         input_path = os.path.join(input_dir, video_file)
-        output_path = os.path.join(output_dir, f'transcribed_{video_file}')
+        output_path = os.path.join(output_dir, f'{video_file[0]}_transcribed_{video_file}')
 
         # Transcribe audio from the video
         print(f"Transcribing {video_file}...")
@@ -82,7 +86,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         group_start_time = None
         group_end_time = None
         group_words = []
-        max_group_duration = 1.2  # 1-second window
+        max_group_duration = 1  # 1-second window
 
         for word_info in words:
             # Get timing and text for each word
@@ -113,7 +117,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             write_ass_line(ass_file, group_start_time, group_end_time, group_words)
 
 def write_ass_line(ass_file, start_time, end_time, words):
-    """Write a dialogue line to the ASS file with grouped words."""
+    """Write a dialogue line to the ASS file with grouped words and bounce effect."""
     start_time_str = format_ass_timestamp(start_time)
     end_time_str = format_ass_timestamp(end_time)
 
@@ -122,8 +126,11 @@ def write_ass_line(ass_file, start_time, end_time, words):
     # Escape special characters
     text = text.replace('\\', '\\\\').replace('{', '\\{').replace('}', '\\}')
 
-    # Write the dialogue line
-    ass_line = f"Dialogue: 0,{start_time_str},{end_time_str},Default,,0,0,0,,{text}\n"
+    # Define the bounce effect using ASS override tags
+    bounce_effect = r"{\shad4\bord4\fscx80\fscy80\t(0,50,\fscx100\fscy100)}" + text
+
+    # Write the dialogue line with the bounce effect
+    ass_line = f"Dialogue: 0,{start_time_str},{end_time_str},Default,,0,0,0,,{bounce_effect}\n"
     ass_file.write(ass_line)
 
 def format_ass_timestamp(seconds):
@@ -157,14 +164,14 @@ def crop_videos(input_folder, output_folder):
     for filename in os.listdir(input_folder):
         if filename.endswith('.mp4'):
             input_path = os.path.join(input_folder, filename)
-            output_path = os.path.join(output_folder, f'vertical_{filename}')
+            output_path = os.path.join(output_folder, f'{filename[0]}_vertical_{filename}')
             command = f'ffmpeg -i "{input_path}" -vf "crop=ih*(9/16):ih:(iw-ih*(9/16))/2:0, scale=1080:1920" -c:a copy "{output_path}"'
             subprocess.run(command, shell=True)
 
 def trim_video_add_audio(video_path, audio_path, output_path):
     for i, vid_filename in enumerate(os.listdir(video_path)):
         for j, aud_filename in enumerate(os.listdir(audio_path)):
-            if vid_filename.endswith('.mp4') and aud_filename.endswith('.wav'):
+            if vid_filename.endswith('.mp4') and aud_filename.endswith('.wav') and aud_filename[0]==vid_filename[0]:
                 # Get the duration of the .wav file
                 with wave.open(os.path.join(audio_path, aud_filename), 'r') as audio_file:
                     frame_rate = audio_file.getframerate()
@@ -180,25 +187,17 @@ def trim_video_add_audio(video_path, audio_path, output_path):
                     video_with_new_audio = trimmed_video.set_audio(audio)
 
                     # Write the result to the output path
-                    output = os.path.join(output_path, f'trimmed_w_audio_{i}_{j}.mp4')
+                    output = os.path.join(output_path, f'{aud_filename[0]}_{vid_filename[0]}_trimmed_w_audio.mp4')
                     video_with_new_audio.write_videofile(output, codec="libx264", audio_codec="aac")
 
-def create_story_audio(script_dir, audio_files):
-    for filename in os.listdir(script_dir):
-        if filename.endswith('.csv'):
-            file_path = os.path.join(script_dir, filename)
-            with open(file_path, mode='r', encoding='utf-8') as file:
-                reader = csv.reader(file)
-                # Skip header
-                next(reader, None)
-                for i, row in enumerate(reader):
-                    fun_fact = str(row[0])
-                    # Load the multi-speaker VITS models
-                    tts = TTS(model_name="tts_models/en/vctk/vits")
-                    speaker = "p230"
-                    tts.tts_to_file(text=fun_fact, speaker=speaker, speed=1, pitch=1.2, file_path=os.path.join(audio_files, f'story_audio_{i}.wav'))
+def create_story_audio(facts, audio_files):
+    for i, fact in enumerate(facts):
+        # Load the multi-speaker VITS models
+        tts = TTS(model_name="tts_models/en/vctk/vits")
+        speaker = "p230"
+        tts.tts_to_file(text=fact, speaker=speaker, speed=1, pitch=1.2, file_path=os.path.join(audio_files, f'{i}_story_audio.wav'))
 
-def upload_to_youtube(video_dir, title_dir):
+def upload_to_youtube(video_dir, titles, descriptions):
     # Define constants
     SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
     API_SERVICE_NAME = "youtube"
@@ -213,7 +212,7 @@ def upload_to_youtube(video_dir, title_dir):
         credentials = flow.run_console()  # Follow console instructions to authenticate
         return credentials
 
-    def upload_video(credentials, file_path, title, category_id="22", privacy_status="public"):
+    def upload_video(credentials, file_path, title, description, category_id="22", privacy_status="public"):
         
         youtube = googleapiclient.discovery.build(
             API_SERVICE_NAME, API_VERSION, credentials=credentials)
@@ -221,10 +220,11 @@ def upload_to_youtube(video_dir, title_dir):
         request_body = {
             "snippet": {
                 "title": title,
-                "categoryId": category_id
+                "description": description,
+                "categoryId": category_id,
             },
             "status": {
-                "privacyStatus": privacy_status
+                "privacyStatus": privacy_status,
             }
         }
 
@@ -244,41 +244,113 @@ def upload_to_youtube(video_dir, title_dir):
         print("Video uploaded successfully!")
         return response
     
-    def read_docx_to_string(file_path):
-        # Open the document
-        doc = Document(file_path)
-        
-        # Read each paragraph and join them into a single string
-        doc_text = "\n".join([para.text for para in doc.paragraphs])
-        
-        return doc_text
-    
     # Set parameters for the video
-    for filename in os.listdir(title_dir):
-        if filename.endswith('.docx'):
-            file_path = os.path.join(title_dir, filename)
-            title = read_docx_to_string(file_path=file_path)
-    category_id = "22"  # 22 is for 'People & Blogs'
+    category_id = "27"  # 22 is for 'People & Blogs' 27 is for education
     privacy_status = "public"  # Options: "public", "private", or "unlisted"'
     credentials = authenticate(CLIENT_SECRET)
     for filename in os.listdir(video_dir):
         if filename.endswith('.mp4'):
             file_path = os.path.join(video_dir, filename)
-            upload_video(credentials=credentials, file_path=file_path, title=title, category_id=category_id, privacy_status=privacy_status)
+            upload_video(credentials=credentials, file_path=file_path, title=titles[int(filename[0])], description=descriptions[int(filename[0])], category_id=category_id, privacy_status=privacy_status)
 
+
+
+def create_script():
+    # Initialize OpenAI client
+    client = OpenAI(api_key=OPENAI_API_KEY)
+
+    text = input('Please input what type of fact you would like:\n')
+    
+    # Step 1: Define the prompt for generating CSV data
+    title_prompt = f"I would like to create 2 viral youtube videos \
+        about {text}. Please make 2 great titles for such a video and give \
+        it an assertive video topic so the viewers know exactly what the \
+        videos are about. Please keep each title around 60 characters. \
+        Please separate each title with a new line. \
+        Please do not include any quotations or text other than the title within your output. I repeat, \
+        Do not include beginning or ending quotations when outputting the fact." 
+
+    completion = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {
+                "role": "user",
+                "content": title_prompt
+            }
+        ]
+    )
+
+    # Parse the response into lines
+    titles = completion.choices[0].message.content.strip().split("\n")
+    titles = [title.strip() for title in titles if title.strip()!='']
+    print("Video titles: ", titles)
+    print("\n")
+
+
+    script_prompt = f"I would like you to create a 2 fun facts that are realistic \
+        but kind of absurd to viewers about 2 different topics. Topic 1: {titles[0]}. Topic 2: {titles[1]}. \
+        Each fun fact should be roughly 400 characters \
+        long and should be interesting, realistic, and explain the fact \
+        after stating it. Please state the fun facts separated by a new line without any quotations or other text. I repeat, \
+        Do not include beginning or ending quotations when outputting each fact." 
+
+    completion = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {
+                "role": "user",
+                "content": script_prompt
+            }
+        ]
+    )
+
+    facts = completion.choices[0].message.content.strip().split("\n")
+    facts = [fact.strip() for fact in facts if fact.strip()!='']
+    print("Fun facts: ", facts)
+    print("\n")
 
     
+    description_prompt = f"Please create 2 descriptions for 2 youtube videos \
+        based on each fun fact I mention below. Please make this description as long as \
+        possible (under 1000 characters) so that each video can easily \
+        pop up in search results. Make sure to include many keywords \
+        that are related to the video topics. Please output the 2 descriptions separated by '---'. \
+        Please include hashtags in each descrition as well. \
+        Do not include quotations or any other text in your output. \
+        Video 1: {facts[0]}. Video 2: {facts[1]}."
+    
+    completion = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {
+                "role": "user",
+                "content": description_prompt
+            }
+        ]
+    )
+
+    descriptions = completion.choices[0].message.content.strip().split('---')
+    descriptions = [description.strip() for description in descriptions if description.strip()!='']
+    print("Descriptions: ", descriptions)
+    print("\n")
+
+    return facts, titles, descriptions
 
 if __name__ == "__main__":
-    script = "/Users/howardqian/Desktop/Youtube_Shorts/script"
     raw_videos = '/Users/howardqian/Desktop/Youtube_Shorts/raw_videos'
     audio_files = '/Users/howardqian/Desktop/Youtube_Shorts/audio_files'
     trimmed_w_audio_videos = '/Users/howardqian/Desktop/Youtube_Shorts/trimmed_w_audio'
     cropped_videos = '/Users/howardqian/Desktop/Youtube_Shorts/cropped_videos'
     transcribed_videos = '/Users/howardqian/Desktop/Youtube_Shorts/transcribed_videos'
 
+    # print("CREATING SCRIPT")
+    # facts, titles, descriptions = create_script()
+
     # print("CREATING AUDIO")
-    # create_story_audio(script, audio_files)
+    # create_story_audio(facts, audio_files)
 
     # print("TRIMMING RAW VIDEO AND ADDING AUDIO")
     # trim_video_add_audio(raw_videos, audio_files, trimmed_w_audio_videos)
@@ -286,11 +358,11 @@ if __name__ == "__main__":
     # print("CROPPING VIDEO")
     # crop_videos(trimmed_w_audio_videos, cropped_videos)
 
-    # print("TRANSCRIBING AND ADDING SUBTITLES")
-    # transcribe_and_subtitle(cropped_videos, transcribed_videos)
+    print("TRANSCRIBING AND ADDING SUBTITLES")
+    transcribe_and_subtitle(cropped_videos, transcribed_videos)
 
-    print("UPLOADING TO YOUTUBE")
-    upload_to_youtube(transcribed_videos, script)
+    # print("UPLOADING TO YOUTUBE")
+    # upload_to_youtube(transcribed_videos, titles, descriptions)
 
 
 

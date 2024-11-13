@@ -21,6 +21,7 @@ if __name__ == "__main__":
     cropped_videos = '/Users/howardqian/Desktop/Youtube_Shorts/cropped_videos'
     transcribed_videos = '/Users/howardqian/Desktop/Youtube_Shorts/transcribed_videos'
 
+
     delete_all_files(audio_files)
     delete_all_files(trimmed_w_audio_videos)
     delete_all_files(cropped_videos)
