@@ -15,8 +15,7 @@ import googleapiclient.errors
 from docx import Document
 from openai_api import OPENAI_API_KEY
 from openai import OpenAI
-
-
+import random
 
 
 def transcribe_and_subtitle(input_dir, output_dir):
@@ -165,36 +164,36 @@ def crop_videos(input_folder, output_folder):
         if filename.endswith('.mp4'):
             input_path = os.path.join(input_folder, filename)
             output_path = os.path.join(output_folder, f'{filename[0]}_vertical_{filename}')
-            command = f'ffmpeg -i "{input_path}" -vf "crop=ih*(9/16):ih:(iw-ih*(9/16))/2:0, scale=1080:1920" -c:a copy "{output_path}"'
+            command = f'ffmpeg -i "{input_path}" -vf "crop=ih*(9/16):ih:(iw-ih*(9/16))/2:0, scale=1080:1920" -c:v libx264 -crf 18 -preset slow -c:a copy "{output_path}"'
             subprocess.run(command, shell=True)
 
 def trim_video_add_audio(video_path, audio_path, output_path):
-    for i, vid_filename in enumerate(os.listdir(video_path)):
-        for j, aud_filename in enumerate(os.listdir(audio_path)):
-            if vid_filename.endswith('.mp4') and aud_filename.endswith('.wav') and aud_filename[0]==vid_filename[0]:
-                # Get the duration of the .wav file
-                with wave.open(os.path.join(audio_path, aud_filename), 'r') as audio_file:
-                    frame_rate = audio_file.getframerate()
-                    num_frames = audio_file.getnframes()
-                    audio_duration = num_frames / float(frame_rate)
-                
-                # Load the video, remove audio, and trim to the audio duration
-                with VideoFileClip(os.path.join(video_path, vid_filename)) as video, AudioFileClip(os.path.join(audio_path, aud_filename)) as audio:
-                    video_no_audio = video.without_audio()  # Remove audio from video
-                    trimmed_video = video_no_audio.subclip(0, audio_duration)
+    for i, aud_filename in enumerate(os.listdir(audio_path)):
+        vid_filename = random.choice(os.listdir(video_path))
+        if vid_filename.endswith('.mp4') and aud_filename.endswith('.wav'):
+            # Get the duration of the .wav file
+            with wave.open(os.path.join(audio_path, aud_filename), 'r') as audio_file:
+                frame_rate = audio_file.getframerate()
+                num_frames = audio_file.getnframes()
+                audio_duration = num_frames / float(frame_rate)
+            
+            # Load the video, remove audio, and trim to the audio duration
+            with VideoFileClip(os.path.join(video_path, vid_filename)) as video, AudioFileClip(os.path.join(audio_path, aud_filename)) as audio:
+                video_no_audio = video.without_audio()  # Remove audio from video
+                trimmed_video = video_no_audio.subclip(0, audio_duration)
 
-                    # Set the new audio from the .wav file
-                    video_with_new_audio = trimmed_video.set_audio(audio)
+                # Set the new audio from the .wav file
+                video_with_new_audio = trimmed_video.set_audio(audio)
 
-                    # Write the result to the output path
-                    output = os.path.join(output_path, f'{aud_filename[0]}_{vid_filename[0]}_trimmed_w_audio.mp4')
-                    video_with_new_audio.write_videofile(output, codec="libx264", audio_codec="aac")
+                # Write the result to the output path
+                output = os.path.join(output_path, f'{aud_filename[0]}_trimmed_w_audio.mp4')
+                video_with_new_audio.write_videofile(output, codec="libx264", audio_codec="aac")
 
 def create_story_audio(facts, audio_files):
     for i, fact in enumerate(facts):
         # Load the multi-speaker VITS models
         tts = TTS(model_name="tts_models/en/vctk/vits")
-        speaker = "p251" # p267 good for scary stories
+        speaker = "p251" # p267 good for scary stories p251 good for general
         tts.tts_to_file(text=fact, speaker=speaker, speed=1, pitch=1.2, file_path=os.path.join(audio_files, f'{i}_story_audio.wav'))
 
 def upload_to_youtube(video_dir, titles, descriptions):
