@@ -7,15 +7,18 @@ from tqdm import tqdm
 import whisper
 from moviepy.editor import VideoFileClip, AudioFileClip
 import wave
-import csv
-from TTS.api import TTS
 import google_auth_oauthlib.flow
 import googleapiclient.discovery
 import googleapiclient.errors
-from docx import Document
 from openai_api import OPENAI_API_KEY
 from openai import OpenAI
 import random
+from pydub import AudioSegment
+import wave
+import io
+import pickle
+from google.auth.transport.requests import Request
+
 
 
 def transcribe_and_subtitle(input_dir, output_dir):
@@ -190,11 +193,18 @@ def trim_video_add_audio(video_path, audio_path, output_path):
                 video_with_new_audio.write_videofile(output, codec="libx264", audio_codec="aac")
 
 def create_story_audio(facts, audio_files):
+    client = OpenAI(api_key=OPENAI_API_KEY)
+    # Call OpenAI's TTS API
     for i, fact in enumerate(facts):
-        # Load the multi-speaker VITS models
-        tts = TTS(model_name="tts_models/en/vctk/vits")
-        speaker = "p251" # p267 good for scary stories p251 good for general
-        tts.tts_to_file(text=fact, speaker=speaker, speed=1, pitch=1.2, file_path=os.path.join(audio_files, f'{i}_story_audio.wav'))
+        response = client.audio.speech.create(
+            model="tts-1-hd", # tts-1-hd or tts-1
+            voice="echo",
+            input=fact,
+        )
+        output_path = os.path.join(audio_files, f'{i}_story_audio.wav')
+        audio = AudioSegment.from_file(io.BytesIO(response.content), format="mp3")  # Specify format if known
+        audio.export(output_path, format="wav")
+
 
 def upload_to_youtube(video_dir, titles, descriptions):
     # Define constants
@@ -202,13 +212,35 @@ def upload_to_youtube(video_dir, titles, descriptions):
     API_SERVICE_NAME = "youtube"
     API_VERSION = "v3"
     CLIENT_SECRET = "/Users/howardqian/Desktop/Youtube_Shorts/client_secret_573416408525-av3ev1ga2h8hs4rbr25qf6vmj648a9r1.apps.googleusercontent.com.json"
+    CREDENTIALS_FILE = 'youtube_credentials.pkl'
 
     def authenticate(client_secret):
-        # Load credentials from the downloaded JSON file
-        os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"  # For development purposes, disable HTTPS check
-        flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
-            client_secret, SCOPES)
-        credentials = flow.run_console()  # Follow console instructions to authenticate
+        # # Load credentials from the downloaded JSON file
+        # os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"  # For development purposes, disable HTTPS check
+        # flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
+        #     client_secret, SCOPES)
+        # credentials = flow.run_console()  # Follow console instructions to authenticate
+        # return credentials
+
+        credentials = None
+
+        # Check if credentials file exists
+        if os.path.exists(CREDENTIALS_FILE):
+            with open(CREDENTIALS_FILE, 'rb') as token:
+                credentials = pickle.load(token)
+
+        # If no valid credentials, go through the authorization flow
+        if not credentials or not credentials.valid:
+            if credentials and credentials.expired and credentials.refresh_token:
+                credentials.refresh(Request())
+            else:
+                flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET, SCOPES)
+                credentials = flow.run_console()
+
+            # Save the credentials for the next run
+            with open(CREDENTIALS_FILE, 'wb') as token:
+                pickle.dump(credentials, token)
+        
         return credentials
 
     def upload_video(credentials, file_path, title, description, category_id="22", privacy_status="public"):
@@ -291,8 +323,9 @@ def create_script():
         but kind of absurd to viewers about 2 different topics. Topic 1: {titles[0]}. Topic 2: {titles[1]}. \
         Each fun fact should be roughly 400 characters \
         long and should be interesting, realistic, and explain the fact \
-        after stating it. Please state the fun facts separated by a new line without any quotations or other text. I repeat, \
-        Do not include beginning or ending quotations when outputting each fact." 
+        after stating it. Please make each sentence simple and easy to understand. \
+        Please state the fun facts separated by a new line without any quotations or other text. I repeat, \
+        DO NOT include beginning or ending quotations or any other text (such as 'Fun Fact') when outputting each fact." 
 
     completion = client.chat.completions.create(
         model="gpt-4o",
@@ -345,23 +378,25 @@ if __name__ == "__main__":
     cropped_videos = '/Users/howardqian/Desktop/Youtube_Shorts/cropped_videos'
     transcribed_videos = '/Users/howardqian/Desktop/Youtube_Shorts/transcribed_videos'
 
-    print("CREATING SCRIPT")
-    facts, titles, descriptions = create_script()
+    # print("CREATING SCRIPT")
+    # facts, titles, descriptions = create_script()
+
+    facts = ["Paced between cones and cosmic forces, the FitnessGram Pacer Test is rumored to parallel astronaut training in endurance and perseverance. NASA might not officially use it, but experts believe the test's repetitive cycle, increasing speed and demand on oxygen intake, mirrors the discipline required in space missions, blending physical and mental resilience crucial for astronauts' stamina.", 'Hidden within the mundane school gym, the FitnessGram Pacer Test harbors an ancient secret: the perfect tempo to unlock the mythical “Runner’s High” at precisely level 14. Historians imagine elite athletes unknowingly trained their minds to endure pain with rhythm. This sprint-dance symphony prompts endorphins to elevate, creating a euphoric state that only the most stalwart test-takers experience.']
 
     print("CREATING AUDIO")
     create_story_audio(facts, audio_files)
 
-    print("TRIMMING RAW VIDEO AND ADDING AUDIO")
-    trim_video_add_audio(raw_videos, audio_files, trimmed_w_audio_videos)
+    # print("TRIMMING RAW VIDEO AND ADDING AUDIO")
+    # trim_video_add_audio(raw_videos, audio_files, trimmed_w_audio_videos)
 
-    print("CROPPING VIDEO")
-    crop_videos(trimmed_w_audio_videos, cropped_videos)
+    # print("CROPPING VIDEO")
+    # crop_videos(trimmed_w_audio_videos, cropped_videos)
 
-    print("TRANSCRIBING AND ADDING SUBTITLES")
-    transcribe_and_subtitle(cropped_videos, transcribed_videos)
+    # print("TRANSCRIBING AND ADDING SUBTITLES")
+    # transcribe_and_subtitle(cropped_videos, transcribed_videos)
 
-    print("UPLOADING TO YOUTUBE")
-    upload_to_youtube(transcribed_videos, titles, descriptions)
+    # print("UPLOADING TO YOUTUBE")
+    # upload_to_youtube(transcribed_videos, titles, descriptions)
 
 
 
