@@ -214,13 +214,7 @@ def upload_to_youtube(video_dir, titles, descriptions):
     CLIENT_SECRET = "/Users/howardqian/Desktop/Youtube_Shorts/client_secret_573416408525-av3ev1ga2h8hs4rbr25qf6vmj648a9r1.apps.googleusercontent.com.json"
     CREDENTIALS_FILE = 'youtube_credentials.pkl'
 
-    def authenticate(client_secret):
-        # # Load credentials from the downloaded JSON file
-        # os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"  # For development purposes, disable HTTPS check
-        # flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
-        #     client_secret, SCOPES)
-        # credentials = flow.run_console()  # Follow console instructions to authenticate
-        # return credentials
+    def authenticate():
 
         credentials = None
 
@@ -278,7 +272,7 @@ def upload_to_youtube(video_dir, titles, descriptions):
     # Set parameters for the video
     category_id = "27"  # 22 is for 'People & Blogs' 27 is for education
     privacy_status = "public"  # Options: "public", "private", or "unlisted"'
-    credentials = authenticate(CLIENT_SECRET)
+    credentials = authenticate()
     for filename in os.listdir(video_dir):
         if filename.endswith('.mp4'):
             file_path = os.path.join(video_dir, filename)
@@ -378,25 +372,20 @@ if __name__ == "__main__":
     cropped_videos = '/Users/howardqian/Desktop/Youtube_Shorts/cropped_videos'
     transcribed_videos = '/Users/howardqian/Desktop/Youtube_Shorts/transcribed_videos'
 
-    # print("CREATING SCRIPT")
-    # facts, titles, descriptions = create_script()
-
-    facts = ["Paced between cones and cosmic forces, the FitnessGram Pacer Test is rumored to parallel astronaut training in endurance and perseverance. NASA might not officially use it, but experts believe the test's repetitive cycle, increasing speed and demand on oxygen intake, mirrors the discipline required in space missions, blending physical and mental resilience crucial for astronauts' stamina.", 'Hidden within the mundane school gym, the FitnessGram Pacer Test harbors an ancient secret: the perfect tempo to unlock the mythical “Runner’s High” at precisely level 14. Historians imagine elite athletes unknowingly trained their minds to endure pain with rhythm. This sprint-dance symphony prompts endorphins to elevate, creating a euphoric state that only the most stalwart test-takers experience.']
+    print("CREATING SCRIPT")
+    facts, titles, descriptions = create_script()
 
     print("CREATING AUDIO")
     create_story_audio(facts, audio_files)
 
-    # print("TRIMMING RAW VIDEO AND ADDING AUDIO")
-    # trim_video_add_audio(raw_videos, audio_files, trimmed_w_audio_videos)
+    print("TRIMMING RAW VIDEO AND ADDING AUDIO")
+    trim_video_add_audio(raw_videos, audio_files, trimmed_w_audio_videos)
 
-    # print("CROPPING VIDEO")
-    # crop_videos(trimmed_w_audio_videos, cropped_videos)
+    print("CROPPING VIDEO")
+    crop_videos(trimmed_w_audio_videos, cropped_videos)
 
-    # print("TRANSCRIBING AND ADDING SUBTITLES")
-    # transcribe_and_subtitle(cropped_videos, transcribed_videos)
+    print("TRANSCRIBING AND ADDING SUBTITLES")
+    transcribe_and_subtitle(cropped_videos, transcribed_videos)
 
-    # print("UPLOADING TO YOUTUBE")
-    # upload_to_youtube(transcribed_videos, titles, descriptions)
-
-
-
+    print("UPLOADING TO YOUTUBE")
+    upload_to_youtube(transcribed_videos, titles, descriptions)
