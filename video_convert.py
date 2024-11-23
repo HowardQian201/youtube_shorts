@@ -5,8 +5,9 @@ import subprocess
 import json
 from tqdm import tqdm
 import whisper
-from moviepy.editor import VideoFileClip, AudioFileClip
+from moviepy.editor import VideoFileClip, ImageClip, AudioFileClip, CompositeVideoClip
 import wave
+from PIL import Image
 import google_auth_oauthlib.flow
 import googleapiclient.discovery
 import googleapiclient.errors
@@ -18,6 +19,7 @@ import wave
 import io
 import pickle
 from google.auth.transport.requests import Request
+import numpy as np
 
 
 
@@ -70,7 +72,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,48,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,2,0,5,100,100,200,1
+Style: Default,Arial,48,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,2,0,2,100,100,350,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -198,7 +200,7 @@ def create_story_audio(facts, audio_files):
     for i, fact in enumerate(facts):
         response = client.audio.speech.create(
             model="tts-1-hd", # tts-1-hd or tts-1
-            voice="echo",
+            voice="onyx", # echo is higher, onyx is deeper
             input=fact,
         )
         output_path = os.path.join(audio_files, f'{i}_story_audio.wav')
@@ -365,12 +367,74 @@ def create_script():
 
     return facts, titles, descriptions
 
+
+
+
+def add_demarcus(transcribed_videos, demarcus_images, final_videos):
+    # Get a list of all image paths in the directory
+    image_paths = [os.path.join(demarcus_images, f) for f in os.listdir(demarcus_images) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+
+    preloaded_images = []
+    for path in image_paths:
+        image = Image.open(path).convert("RGBA")
+        image.thumbnail((500,500), Image.Resampling.LANCZOS)
+        preloaded_images.append(np.array(image))
+    
+    for filename in os.listdir(transcribed_videos):
+        if filename.endswith('.mp4'):
+            file_path = os.path.join(transcribed_videos, filename)
+
+            # Load the video
+            video = VideoFileClip(file_path)
+
+            # Split the video into 3-second segments
+            segment_duration = 3
+            overlays = []
+            
+            # Use np.arange to cover the entire duration
+            for i in np.arange(0, video.duration, segment_duration):
+                # Choose a random image
+                random_image_array = random.choice(preloaded_images)
+            
+                # Calculate the duration of this segment
+                segment_end = min(i + segment_duration, video.duration)
+                clip_duration = segment_end - i
+                
+                # Desired position for the bottom-left corner
+                x_position = 50   # Adjust as needed
+                y_position = 1200 # Adjust as needed
+                image_clip = ImageClip(random_image_array)
+                image_height = image_clip.h
+                adjusted_y_position = y_position - image_height
+                # Create an ImageClip with the specified duration and start time
+                image_clip = image_clip.set_duration(clip_duration).set_start(i).set_position((x_position, adjusted_y_position))
+                
+                overlays.append(image_clip)
+
+            # Create the final video with overlays
+            final_video = CompositeVideoClip([video] + overlays)
+
+            # Ensure the audio is preserved
+            final_video.audio = video.audio
+
+            # Write the output video with appropriate codecs
+            final_video.write_videofile(
+                os.path.join(final_videos, f"{filename[0]}_final_{filename}"),
+                codec="libx264",
+                audio_codec="aac",
+                fps=video.fps,
+                audio=True
+            )
+
+
 if __name__ == "__main__":
     raw_videos = '/Users/howardqian/Desktop/Youtube_Shorts/raw_videos'
     audio_files = '/Users/howardqian/Desktop/Youtube_Shorts/audio_files'
     trimmed_w_audio_videos = '/Users/howardqian/Desktop/Youtube_Shorts/trimmed_w_audio'
     cropped_videos = '/Users/howardqian/Desktop/Youtube_Shorts/cropped_videos'
     transcribed_videos = '/Users/howardqian/Desktop/Youtube_Shorts/transcribed_videos'
+    demarcus_images = '/Users/howardqian/Desktop/Youtube_Shorts/DeMarcus'
+    final_videos = '/Users/howardqian/Desktop/Youtube_Shorts/final_videos'
 
     print("CREATING SCRIPT")
     facts, titles, descriptions = create_script()
@@ -387,5 +451,8 @@ if __name__ == "__main__":
     print("TRANSCRIBING AND ADDING SUBTITLES")
     transcribe_and_subtitle(cropped_videos, transcribed_videos)
 
+    print("ADDING DEMARCUS BLACKOUSINS")
+    add_demarcus(transcribed_videos, demarcus_images, final_videos)
+
     print("UPLOADING TO YOUTUBE")
-    upload_to_youtube(transcribed_videos, titles, descriptions)
+    upload_to_youtube(final_videos, titles, descriptions)
