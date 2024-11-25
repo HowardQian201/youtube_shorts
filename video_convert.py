@@ -11,15 +11,18 @@ from PIL import Image
 import google_auth_oauthlib.flow
 import googleapiclient.discovery
 import googleapiclient.errors
-from openai_api import OPENAI_API_KEY
+from api_keys import OPENAI_API_KEY, ELEVEN_LABS_KEY
 from openai import OpenAI
 import random
-from pydub import AudioSegment
+from pydub import AudioSegment, effects
 import wave
 import io
 import pickle
 from google.auth.transport.requests import Request
 import numpy as np
+from elevenlabs.client import ElevenLabs
+from moviepy.video.fx.all import speedx
+
 
 
 
@@ -72,7 +75,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,48,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,2,0,2,100,100,350,1
+Style: Default,Arial,72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,2,0,2,100,100,450,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -90,7 +93,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         group_start_time = None
         group_end_time = None
         group_words = []
-        max_group_duration = 1  # 1-second window
+        max_group_duration = 0.75  # 0.75-second window
 
         for word_info in words:
             # Get timing and text for each word
@@ -131,7 +134,7 @@ def write_ass_line(ass_file, start_time, end_time, words):
     text = text.replace('\\', '\\\\').replace('{', '\\{').replace('}', '\\}')
 
     # Define the bounce effect using ASS override tags
-    bounce_effect = r"{\shad4\bord4\fscx80\fscy80\t(0,50,\fscx100\fscy100)}" + text
+    bounce_effect = r"{\shad5\bord5\fscx80\fscy80\t(0,50,\fscx100\fscy100)}" + text
 
     # Write the dialogue line with the bounce effect
     ass_line = f"Dialogue: 0,{start_time_str},{end_time_str},Default,,0,0,0,,{bounce_effect}\n"
@@ -184,28 +187,54 @@ def trim_video_add_audio(video_path, audio_path, output_path):
             
             # Load the video, remove audio, and trim to the audio duration
             with VideoFileClip(os.path.join(video_path, vid_filename)) as video, AudioFileClip(os.path.join(audio_path, aud_filename)) as audio:
+                video_duration = video.duration
+                # Set speed-up factor (e.g., 1.5x speed)
+                speed_up_factor = 1.5
+                # Calculate adjusted video duration after speed-up
+                adjusted_video_duration = video_duration / speed_up_factor
+
+                max_start_time = max(0, adjusted_video_duration - audio_duration)
+                start_time = random.uniform(0, max_start_time)
+                end_time = start_time + audio_duration
+
                 video_no_audio = video.without_audio()  # Remove audio from video
-                trimmed_video = video_no_audio.subclip(0, audio_duration)
+                trimmed_video = video_no_audio.subclip(start_time * speed_up_factor, end_time * speed_up_factor)
+
+                # Apply speed-up effect
+                sped_up_video = speedx(trimmed_video, factor=speed_up_factor)
 
                 # Set the new audio from the .wav file
-                video_with_new_audio = trimmed_video.set_audio(audio)
+                video_with_new_audio = sped_up_video.set_audio(audio)
 
                 # Write the result to the output path
                 output = os.path.join(output_path, f'{aud_filename[0]}_trimmed_w_audio.mp4')
                 video_with_new_audio.write_videofile(output, codec="libx264", audio_codec="aac")
 
 def create_story_audio(facts, audio_files):
-    client = OpenAI(api_key=OPENAI_API_KEY)
-    # Call OpenAI's TTS API
+    # Initialize the client with your API key
+    client = ElevenLabs(api_key=ELEVEN_LABS_KEY)
+
     for i, fact in enumerate(facts):
-        response = client.audio.speech.create(
-            model="tts-1-hd", # tts-1-hd or tts-1
-            voice="onyx", # echo is higher, onyx is deeper
-            input=fact,
+        # Generate speech
+        audio = client.generate(
+            text=fact,
+            voice="Adam",  # Replace with your desired voice
+            model="eleven_turbo_v2_5",  # Replace with your desired model
+            stream=True
         )
-        output_path = os.path.join(audio_files, f'{i}_story_audio.wav')
-        audio = AudioSegment.from_file(io.BytesIO(response.content), format="mp3")  # Specify format if known
-        audio.export(output_path, format="wav")
+
+        # Combine the generator's output into bytes
+        audio = b"".join(audio)
+        # Load audio data into an AudioSegment
+        audio = AudioSegment.from_file(io.BytesIO(audio), format="mp3")
+        # Make louder by x decibles
+        audio = audio.apply_gain(0)
+        # Increase the speed by a factor (e.g., 1.1 times faster)
+        audio = effects.speedup(audio, playback_speed=1.1)
+
+        # Save audio as a .wav file
+        output_file = f"{audio_files}/{i}_output_audio.wav"
+        audio.export(output_file, format="wav")
 
 
 def upload_to_youtube(video_dir, titles, descriptions):
@@ -401,13 +430,15 @@ def add_demarcus(transcribed_videos, demarcus_images, final_videos):
                 clip_duration = segment_end - i
                 
                 # Desired position for the bottom-left corner
-                x_position = 50   # Adjust as needed
-                y_position = 1200 # Adjust as needed
+                x_position = 0   # Adjust as needed
+                y_position = 0 # Adjust as needed
                 image_clip = ImageClip(random_image_array)
-                image_height = image_clip.h
-                adjusted_y_position = y_position - image_height
+
+                # image_height = image_clip.h
+                # adjusted_y_position = y_position - image_height
+
                 # Create an ImageClip with the specified duration and start time
-                image_clip = image_clip.set_duration(clip_duration).set_start(i).set_position((x_position, adjusted_y_position))
+                image_clip = image_clip.set_duration(clip_duration).set_start(i).set_position((x_position, y_position))
                 
                 overlays.append(image_clip)
 
@@ -428,7 +459,7 @@ def add_demarcus(transcribed_videos, demarcus_images, final_videos):
 
 
 if __name__ == "__main__":
-    raw_videos = '/Users/howardqian/Desktop/Youtube_Shorts/raw_videos'
+    youtube_videos = '/Users/howardqian/Desktop/Youtube_Shorts/youtube_videos'
     audio_files = '/Users/howardqian/Desktop/Youtube_Shorts/audio_files'
     trimmed_w_audio_videos = '/Users/howardqian/Desktop/Youtube_Shorts/trimmed_w_audio'
     cropped_videos = '/Users/howardqian/Desktop/Youtube_Shorts/cropped_videos'
@@ -443,7 +474,7 @@ if __name__ == "__main__":
     create_story_audio(facts, audio_files)
 
     print("TRIMMING RAW VIDEO AND ADDING AUDIO")
-    trim_video_add_audio(raw_videos, audio_files, trimmed_w_audio_videos)
+    trim_video_add_audio(youtube_videos, audio_files, trimmed_w_audio_videos)
 
     print("CROPPING VIDEO")
     crop_videos(trimmed_w_audio_videos, cropped_videos)
@@ -456,3 +487,4 @@ if __name__ == "__main__":
 
     print("UPLOADING TO YOUTUBE")
     upload_to_youtube(final_videos, titles, descriptions)
+    
