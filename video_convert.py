@@ -22,6 +22,7 @@ from google.auth.transport.requests import Request
 import numpy as np
 from elevenlabs.client import ElevenLabs
 from moviepy.video.fx.all import speedx
+from google.auth.exceptions import RefreshError
 
 
 
@@ -244,9 +245,8 @@ def upload_to_youtube(video_dir, titles, descriptions):
     API_VERSION = "v3"
     CLIENT_SECRET = "/Users/howardqian/Desktop/Youtube_Shorts/client_secret_573416408525-av3ev1ga2h8hs4rbr25qf6vmj648a9r1.apps.googleusercontent.com.json"
     CREDENTIALS_FILE = 'youtube_credentials.pkl'
-
+    
     def authenticate():
-
         credentials = None
 
         # Check if credentials file exists
@@ -254,18 +254,22 @@ def upload_to_youtube(video_dir, titles, descriptions):
             with open(CREDENTIALS_FILE, 'rb') as token:
                 credentials = pickle.load(token)
 
-        # If no valid credentials, go through the authorization flow
-        if not credentials or not credentials.valid:
-            if credentials and credentials.expired and credentials.refresh_token:
-                credentials.refresh(Request())
-            else:
-                flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET, SCOPES)
-                credentials = flow.run_console()
+        try:
+            # Refresh credentials if expired
+            if not credentials or not credentials.valid:
+                if credentials and credentials.expired and credentials.refresh_token:
+                    credentials.refresh(Request())
+                else:
+                    raise RefreshError  # Explicitly raise to force reauthentication
+        except RefreshError:
+            # Token is invalid; reauthenticate
+            flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET, SCOPES)
+            credentials = flow.run_console()
 
-            # Save the credentials for the next run
+            # Save the new credentials
             with open(CREDENTIALS_FILE, 'wb') as token:
                 pickle.dump(credentials, token)
-        
+
         return credentials
 
     def upload_video(credentials, file_path, title, description, category_id="22", privacy_status="public"):
@@ -315,13 +319,14 @@ def create_script():
     # Initialize OpenAI client
     client = OpenAI(api_key=OPENAI_API_KEY)
 
-    text = input('Please input what type of fact you would like:\n')
+    text = input('Please input what type of video you would like:\n')
     
     # Step 1: Define the prompt for generating CSV data
     title_prompt = f"I would like to create 2 viral youtube videos \
         about {text}. Please make 2 great titles for such a video and give \
         it an assertive video topic so the viewers know exactly what the \
-        videos are about. Please keep each title around 60 characters. \
+        videos are about. I do not want a title that suggests there is a list in the video. \
+        Please keep each title around 60 characters. \
         Please separate each title with a new line. \
         Please do not include any quotations or text other than the title within your output. I repeat, \
         Do not include beginning or ending quotations when outputting the fact." 
@@ -344,13 +349,13 @@ def create_script():
     print("\n")
 
 
-    script_prompt = f"I would like you to create a 2 fun facts that are realistic \
+    script_prompt = f"I would like you to create a 2 Reddit style stories that are realistic \
         but kind of absurd to viewers about 2 different topics. Topic 1: {titles[0]}. Topic 2: {titles[1]}. \
-        Each fun fact should be roughly 400 characters \
-        long and should be interesting, realistic, and explain the fact \
-        after stating it. Please make each sentence simple and easy to understand. \
-        Please state the fun facts separated by a new line without any quotations or other text. I repeat, \
-        DO NOT include beginning or ending quotations or any other text (such as 'Fun Fact') when outputting each fact." 
+        Each reddit style story should be roughly 800 characters \
+        long and should be interesting, realistic, and explained well. \
+        Please make each sentence simple and easy to understand. \
+        Please state the each story separated by a new line without any quotations or other text. I repeat, \
+        DO NOT include beginning or ending quotations or any other text when outputting each story." 
 
     completion = client.chat.completions.create(
         model="gpt-4o",
@@ -365,12 +370,12 @@ def create_script():
 
     facts = completion.choices[0].message.content.strip().split("\n")
     facts = [fact.strip() for fact in facts if fact.strip()!='']
-    print("Fun facts: ", facts)
+    print("Stories: ", facts)
     print("\n")
 
     
     description_prompt = f"Please create 2 descriptions for 2 youtube videos \
-        based on each fun fact I mention below. Please make this description as long as \
+        based on each story I mention below. Please make this description as long as \
         possible (under 1000 characters) so that each video can easily \
         pop up in search results. Make sure to include many keywords \
         that are related to the video topics. Please output the 2 descriptions separated by '---'. \
@@ -429,11 +434,12 @@ def add_demarcus(transcribed_videos, demarcus_images, final_videos):
                 segment_end = min(i + segment_duration, video.duration)
                 clip_duration = segment_end - i
                 
-                # Desired position for the bottom-left corner
+                # Desired position for the top-left corner
                 x_position = 0   # Adjust as needed
-                y_position = 0 # Adjust as needed
+                y_position = 100 # Adjust as needed
                 image_clip = ImageClip(random_image_array)
 
+                # # Uncomment for bottom left corner
                 # image_height = image_clip.h
                 # adjusted_y_position = y_position - image_height
 
@@ -484,7 +490,7 @@ if __name__ == "__main__":
 
     print("ADDING DEMARCUS BLACKOUSINS")
     add_demarcus(transcribed_videos, demarcus_images, final_videos)
-
+    
     print("UPLOADING TO YOUTUBE")
     upload_to_youtube(final_videos, titles, descriptions)
     
