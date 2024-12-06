@@ -11,7 +11,7 @@ from PIL import Image
 import google_auth_oauthlib.flow
 import googleapiclient.discovery
 import googleapiclient.errors
-from api_keys import OPENAI_API_KEY, ELEVEN_LABS_KEY, ELEVEN_LABS_KEY2
+from api_keys import OPENAI_API_KEY, ELEVEN_LABS_KEYS
 from openai import OpenAI
 import random
 from pydub import AudioSegment, effects
@@ -23,7 +23,7 @@ import numpy as np
 from elevenlabs.client import ElevenLabs
 from moviepy.video.fx.all import speedx
 from google.auth.exceptions import RefreshError
-import time
+from elevenlabs.core.api_error import ApiError
 
 
 
@@ -178,16 +178,14 @@ def crop_videos(input_folder, output_folder):
 
 def trim_video_add_audio(video_path, audio_path, output_path):
     for i, aud_filename in enumerate(os.listdir(audio_path)):
-        print("Choosing audio file", aud_filename)
-        vid_filename = random.choice(os.listdir(video_path))
+        visible_vid_files = [f for f in os.listdir(video_path) if not f.startswith('.') and os.path.isfile(os.path.join(video_path, f))]
+        vid_filename = random.choice(visible_vid_files)
         if vid_filename.endswith('.mp4') and aud_filename.endswith('.wav'):
             # Get the duration of the .wav file
             with wave.open(os.path.join(audio_path, aud_filename), 'r') as audio_file:
                 frame_rate = audio_file.getframerate()
                 num_frames = audio_file.getnframes()
                 audio_duration = num_frames / float(frame_rate)
-
-            print("Got audio duration:", aud_filename)
             
             # Load the video, remove audio, and trim to the audio duration
             with VideoFileClip(os.path.join(video_path, vid_filename)) as video, AudioFileClip(os.path.join(audio_path, aud_filename)) as audio:
@@ -204,15 +202,11 @@ def trim_video_add_audio(video_path, audio_path, output_path):
                 video_no_audio = video.without_audio()  # Remove audio from video
                 trimmed_video = video_no_audio.subclip(start_time * speed_up_factor, end_time * speed_up_factor)
 
-                print("Trimmed video:", aud_filename)
-
                 # Apply speed-up effect
                 sped_up_video = speedx(trimmed_video, factor=speed_up_factor)
 
                 # Set the new audio from the .wav file
                 video_with_new_audio = sped_up_video.set_audio(audio)
-
-                print("Set audio:", aud_filename)
 
                 # Write the result to the output path
                 output = os.path.join(output_path, f'{aud_filename[0]}_trimmed_w_audio.mp4')
@@ -220,37 +214,28 @@ def trim_video_add_audio(video_path, audio_path, output_path):
 
 def create_story_audio(facts, audio_files):
     
-
     for i, fact in enumerate(facts):
-        try:
-            # Initialize the client with your API key
-            client = ElevenLabs(api_key=ELEVEN_LABS_KEY)
-            # Generate speech
-            audio = client.generate(
-                text=fact,
-                voice="Brian",  # Replace with your desired voice, Adam is the typical one, Michael is old but deep, Brian fits Demarcus, Liam may be better than Adam
-                model="eleven_turbo_v2_5",  # Replace with your desired model
-                stream=True
-            )
-        except Exception as e:
-            print(e)
+        audio = None
+        try_num = -1
+        while audio is None:
+            try_num += 1
+            print(f"Generating audio {i} try number {try_num}.")
+            try:
+                # Initialize the client with your API key
+                client = ElevenLabs(api_key=ELEVEN_LABS_KEYS[try_num])
+                # Generate speech
+                audio = client.generate(
+                    text=fact,
+                    voice="Brian",  # Replace with your desired voice, Adam is the typical one, Michael is old but deep, Brian fits Demarcus, Liam may be better than Adam
+                    model="eleven_turbo_v2_5",  # Replace with your desired model
+                    stream=True
+                )
+                # Combine the generator's output into bytes
+                audio = b"".join(audio)
+            except ApiError as e:
+                print(f"API Error: {e}")
+                audio = None
         
-        try:
-            # Initialize the client with your API key
-            client = ElevenLabs(api_key=ELEVEN_LABS_KEY2)
-            # Generate speech
-            audio = client.generate(
-                text=fact,
-                voice="Brian",  # Replace with your desired voice, Adam is the typical one, Michael is old but deep, Brian fits Demarcus, Liam may be better than Adam
-                model="eleven_turbo_v2_5",  # Replace with your desired model
-                stream=True
-            )
-        except Exception as e:
-            print(e)
-        
-
-        # Combine the generator's output into bytes
-        audio = b"".join(audio)
         # Load audio data into an AudioSegment
         audio = AudioSegment.from_file(io.BytesIO(audio), format="mp3")
         # Make louder by x decibles
@@ -346,11 +331,12 @@ def create_script():
 
     text = input('Please input what type of video you would like:\n')
     
-    # Step 1: Define the prompt for generating CSV data
-    title_prompt = f"I would like to create 2 viral youtube videos \
-        about {text}. Please make 2 great and specific titles for such a video and give \
-        it a detailed and specific video topic so the viewers know exactly what the \
-        videos are about. I do not want a title that suggests there is a list in the video. \
+    title_prompt = f"I would like to create 2 viral reddit-style story youtube videos \
+        about {text}. Please make 2 great and specific titles using popular proper nouns for such a video \
+        Also, give it a detailed and specific video topic so the viewers know exactly what the \
+        videos are about. Please include proper nouns that normal people know about \
+        for places and things in the titles. \
+        I do not want a title that suggests there is a list in the video. \
         Please keep each title around 60 characters. \
         Please separate each title with a new line. \
         Please do not include any quotations or text other than the title within your output. I repeat, \
@@ -373,15 +359,16 @@ def create_script():
     print("Video titles: ", titles)
     print("\n")
 
-
-    script_prompt = f"I would like you to create a 2 controversial Reddit style stories told in the perspective of the speaker \
-        that are realistic but kind of absurd to viewers about \
+    script_prompt = f"I would like you to create a 2 fun and interesting Reddit \
+        style stories that are realistic but kind of absurd to viewers about \
         2 different topics. Topic 1: {titles[0]}. Topic 2: {titles[1]}. \
-        Each reddit style story should be roughly 800 characters \
-        long (1600 characters total between the 2 stories) and should be interesting, realistic, and explained well. \
-        Please include controversial details within each story to make it interesting and engaging. \
+        Each reddit style story should be unrelated to one another, roughly 800 characters \
+        long (1600 characters total between the 2 stories) and should be fun, interesting, realistic, \
+        and explained well. Please include proper nouns for places and things. \
+        Please also make the story realistic and interesting to capture the attentions of listeners, as if it were posted on Reddit. \
         Please state the each story separated by a new line without any quotations or other text. I repeat, \
         DO NOT include beginning or ending quotations or any other text such as the title of the scripts when outputting each story. \
+        DO NOT include any introductory words or sentences - just get right into the story. \
         Simply state the 2 scripts separated by a new line." 
 
     completion = client.chat.completions.create(
@@ -463,7 +450,7 @@ def add_demarcus(transcribed_videos, demarcus_images, final_videos):
                 
                 # Desired position for the top-left corner
                 x_position = 0   # Adjust as needed
-                y_position = 1575 # Adjust as needed
+                y_position = 1675 # Adjust as needed
                 image_clip = ImageClip(random_image_array)
 
                 # Uncomment for bottom left corner
@@ -500,34 +487,25 @@ if __name__ == "__main__":
     demarcus_images = '/Users/howardqian/Desktop/Youtube_Shorts/DeMarcus'
     final_videos = '/Users/howardqian/Desktop/Youtube_Shorts/final_videos'
 
-    titles = ['How One Statistic Forced Me to Rethink My Career Path', 'The Moment a Single Fact Changed My Financial Behavior']
-    descriptions = ["Unlocking Diversity in Corporate America: My Journey from HR Manager to Advocate for Change! Dive into my personal story as a former HR manager awakened by a powerful statistic: diverse teams can boost company revenue by 19%. Realizing my workplace was the epitome of homogeneity, I embarked on a transformative journey that led me to leave my comfortable job. Discover how a TED Talk changed my perspective, prompting me to join a diversity advocacy group and face unexpected challenges, including accusations of being a “white savior.” My family thought I joined a cult, and former colleagues labeled me a traitor. Despite the ridicule and the challenges of being called a disruptor, I've never felt more fulfilled. Watch as I redefine career success, one statistic at a time, and explore what true diversity means in the workplace. #Diversity #HRTransformation #WorkplaceEquality #CareerChange #AdvocateForChange", 'From Luxury to Frugality: My Financial Awakening Journey! Join me as I share how a random scroll through Reddit led to a jaw-dropping realization: people spend over $1,000 a year on coffee alone. Inspired to save, I embarked on a frugal adventure that transformed my life. Learn how I ditched my daily coffee shop visits, created spreadsheets for every expense, and uncovered thousands spent on luxuries like avocado toast. My thriftiness even led me to sell my sneaker collection—a decision that amused my fashionista cousin. Discover my surprising foray into brewing homemade kombucha, which hilariously resulted in a tiny kitchen fire! Embracing minimalism turned me into both a financial guru and a punchline among friends. Despite the jokes, my bank account is thriving. Experience my transition from luxe lifestyle to frugal master. #FrugalLiving #Minimalism #FinancialFreedom #BudgetingJourney #CoffeeSavings']
 
-    # print("CREATING SCRIPT")
-    # facts, titles, descriptions = create_script()
-    time.sleep(3)
+    print("CREATING SCRIPT")
+    facts, titles, descriptions = create_script()
 
-    # print("CREATING AUDIO")
-    # create_story_audio(facts, audio_files)
-    time.sleep(3)
+    print("CREATING AUDIO")
+    create_story_audio(facts, audio_files)
 
     print("TRIMMING RAW VIDEO AND ADDING AUDIO")
     trim_video_add_audio(youtube_videos, audio_files, trimmed_w_audio_videos)
-    time.sleep(3)
 
     print("CROPPING VIDEO")
     crop_videos(trimmed_w_audio_videos, cropped_videos)
-    time.sleep(3)
 
     print("TRANSCRIBING AND ADDING SUBTITLES")
     transcribe_and_subtitle(cropped_videos, transcribed_videos)
-    time.sleep(3)
 
     print("ADDING DEMARCUS BLACKOUSINS")
     add_demarcus(transcribed_videos, demarcus_images, final_videos)
-    time.sleep(3)
     
     print("UPLOADING TO YOUTUBE")
     upload_to_youtube(final_videos, titles, descriptions)
-    time.sleep(3)
     
