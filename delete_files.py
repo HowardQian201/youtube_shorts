@@ -2,6 +2,7 @@
 
 import os
 
+
 def delete_all_files(directory):
     try:
         # List all files in the directory
@@ -16,14 +17,12 @@ def delete_all_files(directory):
 
 
 if __name__ == "__main__":
-    audio_files = '/Users/howardqian/Desktop/Youtube_Shorts/audio_files'
-    trimmed_w_audio_videos = '/Users/howardqian/Desktop/Youtube_Shorts/trimmed_w_audio'
-    cropped_videos = '/Users/howardqian/Desktop/Youtube_Shorts/cropped_videos'
-    transcribed_videos = '/Users/howardqian/Desktop/Youtube_Shorts/transcribed_videos'
-    final_videos = '/Users/howardqian/Desktop/Youtube_Shorts/final_videos'
+    audio_files = r"C:\Users\hhqia\Code\Misc\youtube_shorts\audio_files"
+    trimmed_w_audio_videos = r"C:\Users\hhqia\Code\Misc\youtube_shorts\trimmed_w_audio"
+    cropped_videos = r"C:\Users\hhqia\Code\Misc\youtube_shorts\cropped_videos"
+    transcribed_videos = r"C:\Users\hhqia\Code\Misc\youtube_shorts\transcribed_videos"
 
     delete_all_files(audio_files)
     delete_all_files(trimmed_w_audio_videos)
     delete_all_files(cropped_videos)
     delete_all_files(transcribed_videos)
-    delete_all_files(final_videos)
