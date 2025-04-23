@@ -362,8 +362,8 @@ def create_script():
     script_prompt = f"I would like you to create a 2 fun and interesting Reddit \
         style stories that are realistic but kind of absurd to viewers about \
         2 different topics. Topic 1: {titles[0]}. Topic 2: {titles[1]}. \
-        Each reddit style story should be unrelated to one another, roughly 800 characters \
-        long (1600 characters total between the 2 stories) and should be fun, interesting, realistic, \
+        Each reddit style story should be unrelated to one another, roughly 500 characters \
+        long (1000 characters total between the 2 stories) and should be fun, shocking, interesting, realistic, \
         and explained well. Please include proper nouns for places and things. \
         Please also make the story realistic and interesting to capture the attentions of listeners, as if it were posted on Reddit. \
         Please state the each story separated by a new line without any quotations or other text. I repeat, \
@@ -503,9 +503,9 @@ if __name__ == "__main__":
     print("TRANSCRIBING AND ADDING SUBTITLES")
     transcribe_and_subtitle(cropped_videos, transcribed_videos)
 
-    print("ADDING DEMARCUS BLACKOUSINS")
-    add_demarcus(transcribed_videos, demarcus_images, final_videos)
+    # print("ADDING DEMARCUS BLACKOUSINS")
+    # add_demarcus(transcribed_videos, demarcus_images, final_videos)
     
     print("UPLOADING TO YOUTUBE")
-    upload_to_youtube(final_videos, titles, descriptions)
+    upload_to_youtube(transcribed_videos, titles, descriptions)
     
