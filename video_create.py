@@ -22,7 +22,7 @@ from elevenlabs.client import ElevenLabs
 from moviepy.video.fx.all import speedx
 from elevenlabs.core.api_error import ApiError
 import time
-
+import delete_files as delete
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 MODEL_NAME = "large"           # try "large-v3" or "turbo" if VRAM <10 GB
@@ -501,5 +501,8 @@ if __name__ == "__main__":
 
     print("UPLOADING TO YOUTUBE")
     upload_to_youtube(transcribed_videos, titles, descriptions)
+
+    print("Deleting all files")
+    delete.main()
 
     print("Finished in ", time.time() - start_time, "seconds.")

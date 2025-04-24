@@ -15,8 +15,7 @@ def delete_all_files(directory):
     except Exception as e:
         print(f"Error: {e}")
 
-
-if __name__ == "__main__":
+def main():
     audio_files = r"C:\Users\hhqia\Code\Misc\youtube_shorts\audio_files"
     trimmed_w_audio_videos = r"C:\Users\hhqia\Code\Misc\youtube_shorts\trimmed_w_audio"
     cropped_videos = r"C:\Users\hhqia\Code\Misc\youtube_shorts\cropped_videos"
@@ -26,3 +25,7 @@ if __name__ == "__main__":
     delete_all_files(trimmed_w_audio_videos)
     delete_all_files(cropped_videos)
     delete_all_files(transcribed_videos)
+
+
+if __name__ == "__main__":
+    main()
