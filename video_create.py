@@ -399,10 +399,11 @@ def create_script():
     text = input("Please input what type of video you would like:\n")
 
     title_prompt = f"I would like to create 2 viral reddit-style story youtube videos \
-        about {text}. Please make 2 great and specific titles using popular proper nouns for such a video \
+        about random psychology hacks and human behavior related to the topic of {text}. Please make 2 great and specific titles \
+        using popular proper nouns for such a video \
         Also, give it a detailed and specific video topic so the viewers know exactly what the \
         videos are about. Please include proper nouns that normal people know about \
-        for places and things in the titles. \
+        for places and things in the titles that make interesting topics about psychology hacks, human behavior or love. \
         I do not want a title that suggests there is a list in the video. \
         Please keep each title around 60 characters. \
         Please separate each title with a new line. \
@@ -410,9 +411,9 @@ def create_script():
         Do not include beginning or ending quotations when outputting the fact."
 
     completion = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "system", "content": "You are a helpful, witty, and edgy Gen Z video title topic writer."},
             {"role": "user", "content": title_prompt},
         ],
     )
@@ -424,11 +425,12 @@ def create_script():
     print("\n")
 
     script_prompt = f"I would like you to create a 2 fun and interesting Reddit \
-        style stories that are realistic but kind of absurd to viewers about \
+        style stories that are realistic but also absurd and shocking to viewers told in the first person about \
         2 different topics. Topic 1: {titles[0]}. Topic 2: {titles[1]}. \
         Each reddit style story should be unrelated to one another, roughly 500 characters \
-        long (1000 characters total between the 2 stories) and should be fun, shocking, interesting, realistic, \
-        and explained well. Please include proper nouns for places and things. \
+        long (1000 characters total between the 2 stories) and should be shocking, interesting, realistic, \
+        and explained well. You do not need to be politically correct throughout the script. You can be edgy in \
+        the script to appeal to a common person. Please include proper nouns for places and things. \
         Please also make the story realistic and interesting to capture the attentions of listeners, as if it were posted on Reddit. \
         Please state the each story separated by a new line without any quotations or other text. I repeat, \
         DO NOT include beginning or ending quotations or any other text such as the title of the scripts when outputting each story. \
@@ -436,9 +438,9 @@ def create_script():
         Simply state the 2 scripts separated by a new line."
 
     completion = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "system", "content": "You are a helpful, witty, and edgy Gen Z Reddit-style video script writer."},
             {"role": "user", "content": script_prompt},
         ],
     )
@@ -455,12 +457,12 @@ def create_script():
         that are related to the video topics. Please output the 2 descriptions separated by '---'. \
         Please include hashtags in each descrition as well. \
         Do not include quotations or any other text in your output. \
-        Video 1: {facts[0]}. Video 2: {facts[1]}."
+        Video 1: {titles[0]}. Video 2: {titles[1]}."
 
     completion = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "system", "content": "You are a helpful, witty, and edgy Reddit-style video description writer."},
             {"role": "user", "content": description_prompt},
         ],
     )
