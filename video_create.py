@@ -93,7 +93,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,2,0,2,100,100,450,1
+Style: Default,Arial,58,&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,2,0,2,100,100,450,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -111,7 +111,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         group_start_time = None
         group_end_time = None
         group_words = []
-        max_group_duration = 0.75  # 0.75-second window
+        max_group_duration = 0.4  # 0.4-second window
 
         for word_info in words:
             # Get timing and text for each word
@@ -143,7 +143,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
 def write_ass_line(ass_file, start_time, end_time, words):
-    """Write a dialogue line to the ASS file with grouped words and bounce effect."""
+    """Write a dialogue line to the ASS file with grouped words without animation effects."""
     start_time_str = format_ass_timestamp(start_time)
     end_time_str = format_ass_timestamp(end_time)
 
@@ -152,12 +152,12 @@ def write_ass_line(ass_file, start_time, end_time, words):
     # Escape special characters
     text = text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
 
-    # Define the bounce effect using ASS override tags
-    bounce_effect = r"{\shad5\bord5\fscx80\fscy80\t(0,50,\fscx100\fscy100)}" + text
+    # Enhanced bold style with stronger border for better visibility
+    styled_text = r"{\b1\shad3\bord3.5\fwbold}" + text
 
-    # Write the dialogue line with the bounce effect
+    # Write the dialogue line with the static text style
     ass_line = (
-        f"Dialogue: 0,{start_time_str},{end_time_str},Default,,0,0,0,,{bounce_effect}\n"
+        f"Dialogue: 0,{start_time_str},{end_time_str},Default,,0,0,0,,{styled_text}\n"
     )
     ass_file.write(ass_line)
 
@@ -228,8 +228,8 @@ def trim_video_add_audio(video_path, audio_path, output_path):
                 os.path.join(video_path, vid_filename)
             ) as video, AudioFileClip(os.path.join(audio_path, aud_filename)) as audio:
                 video_duration = video.duration
-                # Set speed-up factor (e.g., 1.3x speed)
-                speed_up_factor = 1.3
+                # Set speed-up factor (e.g., 1.45x speed)
+                speed_up_factor = 1.45
                 # Calculate adjusted video duration after speed-up
                 adjusted_video_duration = video_duration / speed_up_factor
 
@@ -264,7 +264,7 @@ def trim_video_add_audio(video_path, audio_path, output_path):
                 )
 
 
-def create_story_audio(facts, audio_files):
+def create_story_audio(titles, facts, audio_files):
 
     for i, fact in enumerate(facts):
         audio = None
@@ -273,12 +273,13 @@ def create_story_audio(facts, audio_files):
             try_num += 1
             print(f"Generating audio {i} try number {try_num}.")
             try:
+                script = titles[i] + " " + fact
                 # Initialize the client with your API key
                 client = ElevenLabs(api_key=ELEVEN_LABS_KEYS[try_num])
                 # Generate speech
                 audio = client.generate(
-                    text=fact,
-                    voice="Brian",  # Replace with your desired voice, Adam is the typical one, Michael is old but deep, Brian fits Demarcus, Liam may be better than Adam
+                    text=script,
+                    voice="Adam",  # Replace with your desired voice, Adam is the typical one, Michael is old but deep, Brian fits Demarcus, Liam may be better than Adam
                     model="eleven_turbo_v2_5",  # Replace with your desired model
                     stream=True,
                 )
@@ -293,7 +294,7 @@ def create_story_audio(facts, audio_files):
         # Make louder by x decibles
         audio = audio.apply_gain(0)
         # Increase the speed by a factor (e.g., 1.1 times faster)
-        audio = effects.speedup(audio, playback_speed=1.1)
+        audio = effects.speedup(audio, playback_speed=1.3)
 
         # Save audio as a .wav file
         output_file = f"{audio_files}/{i}_output_audio.wav"
@@ -310,9 +311,6 @@ def upload_to_youtube(video_dir, titles, descriptions):
 
     def authenticate():
         credentials = None
-        SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
-        CLIENT_SECRET = r"C:\Users\hhqia\Code\Misc\youtube_shorts\client_secret_38628020910-hn37vtut0p1k8jnb65s2q5gpqes8335a.apps.googleusercontent.com.json"
-        CREDENTIALS_FILE = "youtube_credentials.pkl"
 
         # Check if credentials file exists
         if os.path.exists(CREDENTIALS_FILE):
@@ -321,9 +319,13 @@ def upload_to_youtube(video_dir, titles, descriptions):
 
         # Refresh credentials if expired
         if not credentials or not credentials.valid:
-            if credentials and credentials.expired and credentials.refresh_token:
-                credentials.refresh(Request())
-            else:
+            try:
+                if credentials and credentials.expired and credentials.refresh_token:
+                    credentials.refresh(Request())
+                else:
+                    raise Exception("No valid credentials or refresh token")
+            except Exception as e:
+                print("Authentication expired or invalid. Starting new authentication flow...")
                 flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET, SCOPES)
                 credentials = flow.run_local_server(port=0)
 
@@ -399,21 +401,20 @@ def create_script():
     text = input("Please input what type of video you would like:\n")
 
     title_prompt = f"I would like to create 2 viral reddit-style story youtube videos \
-        about random psychology hacks and human behavior related to the topic of {text}. Please make 2 great and specific titles \
-        using popular proper nouns for such a video \
-        Also, give it a detailed and specific video topic so the viewers know exactly what the \
-        videos are about. Please include proper nouns that normal people know about \
-        for places and things in the titles that make interesting topics about psychology hacks, human behavior or love. \
-        I do not want a title that suggests there is a list in the video. \
-        Please keep each title around 60 characters. \
-        Please separate each title with a new line. \
-        Please do not include any quotations or text other than the title within your output. I repeat, \
-        Do not include beginning or ending quotations when outputting the fact."
+        about stories related to the topic of {text}. Please make 2 great and specific questions \
+        using popular proper nouns for such a video. \
+        Imagine you are asking a friend a question that they can then tell an interesting story about. \
+        Make the question interesting and engaging. Ask what, how or when questions. Just directly ask the questions without a request.  \
+        I do not want a question that suggests there is a list in the video. \
+        Please keep each question around 60 characters. \
+        Please separate each question with a new line. \
+        Please do not include any quotations or text other than the question within your output. I repeat, \
+        Do not include beginning or ending quotations when outputting the questions."
 
     completion = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": "You are a helpful, witty, and edgy Gen Z video title topic writer."},
+            {"role": "system", "content": "You are a captivating, personable, and relatable male Gen Z Reddit subreddit question writer."},
             {"role": "user", "content": title_prompt},
         ],
     )
@@ -427,12 +428,13 @@ def create_script():
     script_prompt = f"I would like you to create a 2 fun and interesting Reddit \
         style stories that are realistic but also absurd and shocking to viewers told in the first person about \
         2 different topics. Topic 1: {titles[0]}. Topic 2: {titles[1]}. \
-        Each reddit style story should be unrelated to one another, roughly 500 characters \
-        long (1000 characters total between the 2 stories) and should be shocking, interesting, realistic, \
+        Each reddit style story should be unrelated to one another, roughly 750 characters \
+        long (1500 characters total between the 2 stories) and should be shocking, interesting, realistic, \
         and explained well. You do not need to be politically correct throughout the script. You can be edgy in \
         the script to appeal to a common person. Please include proper nouns for places and things. \
         Please also make the story realistic and interesting to capture the attentions of listeners, as if it were posted on Reddit. \
-        Please state the each story separated by a new line without any quotations or other text. I repeat, \
+        Make the story as cool as possible but still realistic and not cringy so people might question if it is true or not. \
+        Please state each story separated by a new line without any quotations or other text. I repeat, \
         DO NOT include beginning or ending quotations or any other text such as the title of the scripts when outputting each story. \
         DO NOT include any introductory words or sentences - just get right into the story. \
         Simply state the 2 scripts separated by a new line."
@@ -440,7 +442,7 @@ def create_script():
     completion = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": "You are a helpful, witty, and edgy Gen Z Reddit-style video script writer."},
+            {"role": "system", "content": "You are a captivating, personable, and relatable male Gen Z Reddit-style video script writer."},
             {"role": "user", "content": script_prompt},
         ],
     )
@@ -453,7 +455,7 @@ def create_script():
     description_prompt = f"Please create 2 descriptions for 2 youtube videos \
         based on each story I mention below. Please make this description as long as \
         possible (under 1000 characters) so that each video can easily \
-        pop up in search results. Make sure to include many keywords \
+        pop up in search results. Make sure to include many keywords and proper nouns \
         that are related to the video topics. Please output the 2 descriptions separated by '---'. \
         Please include hashtags in each descrition as well. \
         Do not include quotations or any other text in your output. \
@@ -490,7 +492,7 @@ if __name__ == "__main__":
     facts, titles, descriptions = create_script()
 
     print("CREATING AUDIO")
-    create_story_audio(facts, audio_files)
+    create_story_audio(titles, facts, audio_files)
 
     print("TRIMMING RAW VIDEO AND ADDING AUDIO")
     trim_video_add_audio(raw_videos, audio_files, trimmed_w_audio_videos)
